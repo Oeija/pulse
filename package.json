@@ -1,0 +1,58 @@
+{
+  "name": "pulse",
+  "version": "1.0.0",
+  "description": "Real-time analytics dashboard with event streaming and 3D visualizations",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend",
+    "data-generator"
+  ],
+  "scripts": {
+    "dev": "docker-compose up -d && npm run dev:all",
+    "dev:all": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\" \"npm run dev:generator\"",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:generator": "npm run dev --workspace=data-generator",
+    "build": "npm run build --workspaces",
+    "build:frontend": "npm run build --workspace=frontend",
+    "build:backend": "npm run build --workspace=backend",
+    "build:generator": "npm run build --workspace=data-generator",
+    "docker:infra": "docker-compose up -d kafka kafka-ui timescaledb redis",
+    "docker:up": "docker-compose --profile full up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "docker:clean": "docker-compose down -v",
+    "kafka:topics": "docker exec -it pulse-kafka kafka-topics --bootstrap-server localhost:9092 --list",
+    "kafka:create-topics": "node scripts/create-kafka-topics.js",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
+    "clean": "npm run clean --workspaces && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "prettier": "^3.1.1"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/pulse.git"
+  },
+  "keywords": [
+    "real-time",
+    "analytics",
+    "dashboard",
+    "kafka",
+    "timescaledb",
+    "graphql",
+    "three.js",
+    "monitoring",
+    "apm"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}

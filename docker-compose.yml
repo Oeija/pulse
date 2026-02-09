@@ -1,0 +1,180 @@
+version: '3.8'
+
+services:
+  # Kafka - Event streaming platform (KRaft mode - no Zookeeper needed!)
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: pulse-kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      # KRaft mode configuration
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      
+      # Listener configuration
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://kafka:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      
+      # Cluster configuration
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      
+      # Topic configuration
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168  # 7 days
+      
+      # KRaft cluster ID (must be a valid UUID)
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    networks:
+      - pulse-network
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Kafka UI - Web interface for Kafka management
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: pulse-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: pulse-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    networks:
+      - pulse-network
+
+  # TimescaleDB - PostgreSQL with time-series extensions
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: pulse-timescaledb
+    environment:
+      POSTGRES_DB: pulse_metrics
+      POSTGRES_USER: pulse_user
+      POSTGRES_PASSWORD: pulse_password
+    ports:
+      - "5433:5432"
+    networks:
+      - pulse-network
+    volumes:
+      - timescaledb-data:/var/lib/postgresql/data
+      - ./docker/init-db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pulse_user -d pulse_metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis - In-memory cache for real-time metrics
+  redis:
+    image: redis:7-alpine
+    container_name: pulse-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    networks:
+      - pulse-network
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Data Generator Service (will be built from local code)
+  data-generator:
+    build:
+      context: ./data-generator
+      dockerfile: Dockerfile
+    container_name: pulse-data-generator
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      EVENTS_PER_SECOND: 100
+      ENABLE_ANOMALIES: "true"
+    networks:
+      - pulse-network
+    restart: unless-stopped
+    profiles:
+      - full  # Only start with --profile full
+
+  # Backend API Service (will be built from local code)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pulse-backend
+    depends_on:
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      KAFKA_BROKERS: kafka:29092
+      POSTGRES_HOST: timescaledb
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: pulse_metrics
+      POSTGRES_USER: pulse_user
+      POSTGRES_PASSWORD: pulse_password
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    networks:
+      - pulse-network
+    restart: unless-stopped
+    profiles:
+      - full  # Only start with --profile full
+
+  # Frontend Service (will be built from local code)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    container_name: pulse-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_GRAPHQL_HTTP_URL: http://localhost:4000/graphql
+      VITE_GRAPHQL_WS_URL: ws://localhost:4000/graphql
+    networks:
+      - pulse-network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    restart: unless-stopped
+    profiles:
+      - full  # Only start with --profile full
+
+networks:
+  pulse-network:
+    driver: bridge
+
+volumes:
+  kafka-data:
+  timescaledb-data:
+  redis-data:
