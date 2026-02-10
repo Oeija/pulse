@@ -81,7 +81,7 @@ Before you begin, ensure you have the following installed:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/pulse.git
+git clone https://github.com/Oeija/pulse.git
 cd pulse
 ```
 
@@ -368,9 +368,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📧 Contact
 
-Your Name - [@yourtwitter](https://twitter.com/yourtwitter)
-
-Project Link: [https://github.com/yourusername/pulse](https://github.com/yourusername/pulse)
+Linkedin - (https://www.linkedin.com/in/oeivin)
 
 ---
 
